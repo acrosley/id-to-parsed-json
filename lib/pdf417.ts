@@ -175,37 +175,12 @@ export type AAMVAFields = {
         .map((r: any) => (typeof r.rawValue === "string" ? r.rawValue : ""))
         .filter(Boolean);
     } catch (err) {
-      // Fallback: try with zxing-wasm if barcode-detector fails
-      try {
-        console.warn("BarcodeDetector failed, trying zxing-wasm:", (err as Error).message);
-        
-        // Try with zxing-wasm as fallback
-        const zxing = await import("zxing-wasm");
-        const { createCanvas, loadImage } = await import("canvas");
-        
-        const image = await loadImage(bytes);
-        const canvas = createCanvas(image.width, image.height);
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(image, 0, 0);
-        
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-        // Try different zxing-wasm approaches
-        if (zxing.BrowserMultiFormatReader) {
-          const reader = new zxing.BrowserMultiFormatReader();
-          const result = await reader.decodeFromImageData(imageData);
-          if (result) return [result.getText()].filter(Boolean);
-        }
-        
-        // If BrowserMultiFormatReader doesn't exist, try other methods
-        console.warn("zxing-wasm BrowserMultiFormatReader not available");
-        return [];
-        
-      } catch (fallbackErr) {
-        console.error("All PDF417 detection methods failed:", (fallbackErr as Error).message);
-        console.error("Original error:", (err as Error).message);
-        return [];
-      }
+      // For now, return empty array and log the error
+      // TODO: Implement a proper server-side PDF417 decoder
+      console.warn("PDF417 detection failed:", (err as Error).message);
+      console.warn("Note: barcode-detector may not work in server environments");
+      console.warn("Consider implementing a server-side PDF417 decoder");
+      return [];
     }
   }
   
