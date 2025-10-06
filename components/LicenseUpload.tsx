@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import LicenseResult from './LicenseResult';
+import { detectBarcodeFromFile, isBarcodeDetectionSupported } from '@/lib/barcode-detector';
 
 interface ParsedLicense {
   id: number;
@@ -84,29 +85,57 @@ export default function LicenseUpload() {
         throw new Error('File size must be less than 10MB');
       }
 
-      // Simulate progress
+      // Check if barcode detection is supported
+      if (!isBarcodeDetectionSupported()) {
+        throw new Error('Barcode detection is not supported in this browser. Please use a modern browser like Chrome, Firefox, or Safari.');
+      }
+
+      // Simulate progress for barcode detection
       const progressInterval = setInterval(() => {
         setUploadState(prev => ({
           ...prev,
-          progress: Math.min(prev.progress + 10, 90)
+          progress: Math.min(prev.progress + 15, 60)
         }));
       }, 200);
 
-      // Create form data
-      const formData = new FormData();
-      formData.append('file', file);
+      // Step 1: Client-side barcode detection
+      console.log('Starting client-side barcode detection...');
+      const barcodeResult = await detectBarcodeFromFile(file);
+      
+      clearInterval(progressInterval);
 
-      // Upload to API
+      if (!barcodeResult.success) {
+        throw new Error(barcodeResult.error || 'No PDF417 barcode found');
+      }
+
+      if (barcodeResult.data.length === 0) {
+        throw new Error('No PDF417 barcode found in the image');
+      }
+
+      console.log('Barcode detected:', barcodeResult.data.length, 'barcodes found');
+
+      // Step 2: Send decoded data to server for AAMVA parsing
+      setUploadState(prev => ({
+        ...prev,
+        progress: 70
+      }));
+
       const response = await fetch('/api/parse-license', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          barcodeData: barcodeResult.data[0], // Use first barcode
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size
+        }),
       });
-
-      clearInterval(progressInterval);
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload failed');
+        throw new Error(errorData.error || 'Server processing failed');
       }
 
       const result = await response.json();
@@ -181,7 +210,9 @@ export default function LicenseUpload() {
                 </div>
                 <div>
                   <p className="text-lg font-medium text-gray-900">Processing...</p>
-                  <p className="text-sm text-gray-500">Decoding PDF417 barcode</p>
+                  <p className="text-sm text-gray-500">
+                    {uploadState.progress < 60 ? 'Detecting PDF417 barcode...' : 'Parsing license data...'}
+                  </p>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
@@ -253,7 +284,8 @@ export default function LicenseUpload() {
         <div className="mt-4 p-3 bg-blue-100 rounded-lg">
           <p className="text-sm text-blue-800">
             <strong>Note:</strong> This tool works with US driver's licenses that use the AAMVA standard. 
-            The PDF417 barcode must be clearly visible for successful parsing.
+            The PDF417 barcode must be clearly visible for successful parsing. Requires a modern browser 
+            with BarcodeDetector support (Chrome, Firefox, Safari).
           </p>
         </div>
       </div>
