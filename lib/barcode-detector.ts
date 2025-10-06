@@ -143,11 +143,12 @@ export class ClientBarcodeDetector {
     return 'BarcodeDetector' in window;
   }
 
-  getSupportedFormats(): string[] {
+  async getSupportedFormats(): Promise<string[]> {
     if (!this.detector) return [];
     
     try {
-      return BarcodeDetector.getSupportedFormats();
+      const formats = await BarcodeDetector.getSupportedFormats();
+      return Array.from(formats);
     } catch {
       return ['pdf417']; // Default assumption
     }
