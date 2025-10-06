@@ -1,38 +1,39 @@
 #!/usr/bin/env tsx
 /**
- * Database setup script for id-to-parsed-json project
- * This script creates the licenses table and sets up the database schema
+ * Simple database setup script for id-to-parsed-json project
  */
 
 import { sql } from '@vercel/postgres';
-import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 async function setupDatabase() {
   try {
     console.log('🚀 Setting up database schema...');
     
-    // Read the SQL schema file
-    const schemaPath = join(__dirname, '..', 'sql', '001_create_licenses_table.sql');
-    const schemaSQL = readFileSync(schemaPath, 'utf8');
+    // Create licenses table
+    await sql`
+      CREATE TABLE IF NOT EXISTS licenses (
+        id BIGSERIAL PRIMARY KEY,
+        file_key TEXT,
+        mime_type TEXT NOT NULL,
+        source TEXT NOT NULL,
+        payload_raw TEXT,
+        parsed_json JSONB NOT NULL,
+        confidence NUMERIC(3,2) DEFAULT 0.98 CHECK (confidence >= 0 AND confidence <= 1),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `;
     
-    // Execute the schema - split by semicolon and execute each statement
-    const statements = schemaSQL.split(';').filter(stmt => stmt.trim());
-    for (const statement of statements) {
-      if (statement.trim()) {
-        await sql.unsafe(statement);
-      }
-    }
+    console.log('✅ Created licenses table');
     
-    console.log('✅ Database schema created successfully!');
-    console.log('📋 Created table: licenses');
-    console.log('📊 Created indexes for performance');
+    // Create indexes
+    await sql`CREATE INDEX IF NOT EXISTS idx_licenses_created_at ON licenses(created_at);`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_licenses_source ON licenses(source);`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_licenses_confidence ON licenses(confidence);`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_licenses_parsed_json ON licenses USING GIN(parsed_json);`;
     
-    // Test the connection by querying the table
+    console.log('✅ Created indexes');
+    
+    // Test the connection
     const result = await sql`
       SELECT table_name, column_name, data_type 
       FROM information_schema.columns 
@@ -43,10 +44,10 @@ async function setupDatabase() {
     console.log('\n📋 Table structure:');
     console.table(result.rows);
     
-    // Test inserting a sample record
+    // Test insert/delete
     console.log('\n🧪 Testing database operations...');
     const testRecord = {
-      jurisdiction: 'CA',
+      jurisdiction: 'TEST',
       idNumber: 'TEST123456',
       firstName: 'John',
       lastName: 'Doe',
@@ -78,5 +79,4 @@ async function setupDatabase() {
   }
 }
 
-// Run the setup
 setupDatabase();
