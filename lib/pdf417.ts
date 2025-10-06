@@ -139,9 +139,8 @@ export type AAMVAFields = {
   
   export async function decodePdf417(bytes: Buffer): Promise<string[]> {
     try {
-      // Use barcode-detector for PDF417 decoding
-      // Note: This is a browser-compatible approach that works in Node.js with canvas
-      const { BarcodeDetector } = await import("barcode-detector");
+      // Use zxing-wasm for server-side PDF417 decoding
+      const { BrowserMultiFormatReader } = await import("zxing-wasm");
       
       // Convert Buffer to ImageData using canvas
       const { createCanvas, loadImage } = await import("canvas");
@@ -155,32 +154,51 @@ export type AAMVAFields = {
       // Get image data
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       
-      // Create a compatible ImageData object for BarcodeDetector
-      const compatibleImageData = {
+      // Create a proper ImageData object for zxing-wasm
+      const imageDataObj = {
         data: imageData.data,
         width: imageData.width,
         height: imageData.height,
-        colorSpace: 'srgb' as const
       };
       
-      // Create BarcodeDetector instance for PDF417
-      const detector = new BarcodeDetector({ formats: ["pdf417"] });
+      // Create reader instance
+      const reader = new BrowserMultiFormatReader();
       
-      // Detect barcodes
-      const results = await detector.detect(compatibleImageData as any);
+      // Decode PDF417 barcodes
+      const result = await reader.decodeFromImageData(imageDataObj);
       
-      if (!results?.length) return [];
+      if (!result) return [];
       
       // Return array of decoded strings
-      return results
-        .map((r: any) => (typeof r.rawValue === "string" ? r.rawValue : ""))
-        .filter(Boolean);
+      return [result.getText()].filter(Boolean);
     } catch (err) {
-      // Fallback: return empty array for now
-      // TODO: Implement proper PDF417 decoding with a more compatible library
-      console.warn("PDF417 detection failed:", (err as Error).message);
-      console.warn("This is a placeholder implementation. PDF417 decoding needs proper setup.");
-      return [];
+      // Fallback: try with a different approach
+      try {
+        console.warn("Primary PDF417 detection failed, trying alternative method:", (err as Error).message);
+        
+        // Try with barcode-detector as fallback
+        const { BarcodeDetector } = await import("barcode-detector");
+        const { createCanvas, loadImage } = await import("canvas");
+        
+        const image = await loadImage(bytes);
+        const canvas = createCanvas(image.width, image.height);
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(image, 0, 0);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const detector = new BarcodeDetector({ formats: ["pdf417"] });
+        const results = await detector.detect(imageData);
+        
+        if (!results?.length) return [];
+        
+        return results
+          .map((r: any) => (typeof r.rawValue === "string" ? r.rawValue : ""))
+          .filter(Boolean);
+      } catch (fallbackErr) {
+        console.error("All PDF417 detection methods failed:", (fallbackErr as Error).message);
+        console.error("Original error:", (err as Error).message);
+        return [];
+      }
     }
   }
   
